@@ -1,7 +1,7 @@
 '''
 Date: 2021-11-25 21:49:19
 LastEditors: HowsenFisher
-LastEditTime: 2021-11-27 20:52:11
+LastEditTime: 2021-11-27 23:12:33
 FilePath: \GAN\train.py
 '''
 import torch
@@ -32,26 +32,34 @@ parser = argparse.ArgumentParser(
     description='Train a GAN model.'
 )
 # 添加local_rank命令行参数（DDP模式下必须有这个参数）
+parser.add_argument("--useDDP", default=0, type=int)
 parser.add_argument("--local_rank", default=-1, type=int)
 parser.add_argument("--config_path", default="./Config/default.yml", type=str)
 # 拿出参数集
 args = parser.parse_args()
+useDDP = args.useDDP
 #######################################################################################################
 """
     DDP初始化：要放在所有DDP代码前
 """
-# nccl是GPU设备上最快、最推荐的后端
-dist.init_process_group(backend='nccl')
-# local_rank参数
-local_rank = dist.get_rank()
-# DDP：DDP backend初始化
-torch.cuda.set_device(local_rank)
+if useDDP:
+    # nccl是GPU设备上最快、最推荐的后端
+    dist.init_process_group(backend='nccl')
+    # local_rank参数
+    local_rank = dist.get_rank()
+    # DDP：DDP backend初始化
+    torch.cuda.set_device(local_rank)
+else:
+    local_rank = 0
 #######################################################################################################
 """
 	日志
 """
 # 日志生成器
-logger = logger(dist.get_rank())
+if useDDP:
+    logger = logger(dist.get_rank())
+else:
+    logger = logger(0)
 #######################################################################################################
 """
 	GPU检查及环境
@@ -87,7 +95,7 @@ logger.info("设置文件加载完成")
 logger.info("正在生成GAN模型(with %s)" % ("gpu" if use_gpu else "cpu"))
 gan = GAN(latent_size, img_size).to(device)
 # 如果是主进程，模型转换为DDP模式
-if local_rank is not None and not local_rank == -1:
+if local_rank is not None and not local_rank == -1 and useDDP:
     gan = DDP(gan, device_ids=[local_rank], output_device=local_rank)
     gan = gan.module
 logger.info("打印模型")
@@ -107,12 +115,16 @@ train_set = mnist.MNIST('./data', train=True, download=True, transform=transform
 ]))
 logger.info("成功载入Mnist数据集")
 
-# DDP：使用DistributedSampler
-train_sampler = DistributedSampler(train_set)
-logger.info("制作dataLoader")
-# 制作DDP版本的dataloader
-train_data_loader = DataLoader(
-    dataset=train_set, batch_size=batch_size, sampler=train_sampler)
+if useDDP:
+    # DDP：使用DistributedSampler
+    train_sampler = DistributedSampler(train_set)
+    logger.info("制作dataLoader")
+    # 制作DDP版本的dataloader
+    train_data_loader = DataLoader(
+        dataset=train_set, batch_size=batch_size, sampler=train_sampler)
+else:
+    train_data_loader = DataLoader(
+        dataset=train_set, batch_size=batch_size, shuffle=True)
 logger.info("dataLoader载入完毕")
 #########################################################################################################
 """
@@ -168,7 +180,7 @@ for epoch in range(epochs):
     # 打印轮次
     logger.info("epoch {}/{}".format(epoch+1, epochs))
     # 主进程控制tqdm进度条
-    if dist.get_rank() == 0:
+    if local_rank == 0:
         train_data_loader = tqdm(train_data_loader)
     # 非主进程sampler传入轮次信息
     else:
@@ -226,7 +238,7 @@ for epoch in range(epochs):
         # 更新生成器参数
         gan.generator.optimizer.step()
         # 设置进度条右边显示的信息
-        if index % 10 == 0 and dist.get_rank() == 0:
+        if index % 10 == 0 and local_rank == 0:
             train_data_loader.set_postfix(
                 Dloss=Dloss.item(), GLoss=Gloss.float().item())
 
