@@ -1,7 +1,7 @@
 '''
 Date: 2021-11-25 21:49:19
 LastEditors: HowsenFisher
-LastEditTime: 2021-11-27 23:12:33
+LastEditTime: 2021-11-27 23:20:23
 FilePath: \GAN\train.py
 '''
 import torch
@@ -74,6 +74,12 @@ if use_gpu:
     logger.info("GPU数量:%d" % gpu_c)
 # 如果cuda可以使用，device为cuda，否则是cpu
 device = torch.device("cuda" if use_gpu else "cpu")
+# 没有out文件夹就创建
+if not os.path.exists("./out"):
+    try:
+        os.mkdir("./out")
+    except OSError:
+        pass
 #######################################################################################################
 """
 	参数

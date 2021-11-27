@@ -14,6 +14,11 @@ class logger(object):
             # 如果self.logger没有handler， 就执行以下代码添加handler
             self.logger.setLevel(logging.INFO)
             self.log_path = "./log"
+            if not os.path.exists(self.log_path):
+                try:
+                    os.mkdir(self.log_path)
+                except OSError:
+                    pass
             # 创建一个handler,用于写入日志文件
             fh = logging.FileHandler(self.log_path + '/runlog-' + time.strftime(
                 "%Y-%m-%d-%H-%M-%S", time.localtime()) + '.log', encoding='utf-8')
@@ -69,7 +74,7 @@ class logger(object):
 
 
 if __name__ == "__main__":
-    logger = logger()
+    logger = logger(0)
     logger.info("12345")
     logger.debug("12345")
     logger.warning("12345")
