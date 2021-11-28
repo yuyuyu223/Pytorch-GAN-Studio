@@ -1,0 +1,9 @@
+model:
+  img_size: [96, 96, 3]
+  latent_size: 128
+train:
+  batch_size: 128
+  epochs: 5000
+  save_freq: 1
+out:
+  save_size: [4, 5]
