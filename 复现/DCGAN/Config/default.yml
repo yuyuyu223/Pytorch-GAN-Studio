@@ -4,6 +4,6 @@ model:
 train:
   batch_size: 128
   epochs: 5000
-  save_freq: 1
+  save_freq: 10
 out:
   save_size: [4, 5]

@@ -1,8 +1,8 @@
 '''
 Date: 2021-11-25 21:49:19
 LastEditors: HowsenFisher
-LastEditTime: 2021-11-27 23:20:23
-FilePath: \GAN\train.py
+LastEditTime: 2021-11-28 20:56:49
+FilePath: \DCGAN\train.py
 '''
 import torch
 from Utils.Logger import logger
@@ -36,6 +36,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument("--useDDP", default=0, type=int)
 parser.add_argument("--local_rank", default=-1, type=int)
 parser.add_argument("--config_path", default="./Config/default.yml", type=str)
+parser.add_argument("--load_model", default="", type=str)
 # 拿出参数集
 args = parser.parse_args()
 useDDP = args.useDDP
@@ -109,6 +110,18 @@ logger.info("打印模型")
 # 只有主进程打印模型
 if local_rank == 0:
     gan.PrintNet(logger)
+
+
+modelPath = args.load_model
+if modelPath == "":
+    start_epoch = 1
+    pass
+else:
+    logger.info("加载已有的模型")
+    gan.load_state_dict(torch.load(modelPath))
+    start_epoch = int(os.path.splitext(os.path.split(modelPath)[1])[0])+1
+logger.info("从第%d轮开始训练"%start_epoch)
+
 ######################################################################################################
 """
 	数据集
@@ -184,7 +197,7 @@ logger.info("开始训练")
 real_labels = torch.ones(batch_size, 1).to(device)
 fake_labels = torch.zeros(batch_size, 1).to(device)
 # 每一轮
-for epoch in range(epochs):
+for epoch in range(start_epoch, epochs):
     # 打印轮次
     logger.info("epoch {}/{}".format(epoch+1, epochs))
     # 主进程控制tqdm进度条
