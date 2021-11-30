@@ -1,8 +1,7 @@
 '''
 Date: 2021-11-25 21:49:19
 LastEditors: HowsenFisher
-LastEditTime: 2021-11-28 20:56:49
-FilePath: \DCGAN\train.py
+LastEditTime: 2021-11-30 10:35:59
 '''
 import torch
 from Utils.Logger import logger
@@ -33,13 +32,12 @@ parser = argparse.ArgumentParser(
     description='Train a GAN model.'
 )
 # 添加local_rank命令行参数（DDP模式下必须有这个参数）
-parser.add_argument("--useDDP", default=0, type=int)
-parser.add_argument("--local_rank", default=-1, type=int)
+# parser.add_argument("useDDP")
+parser.add_argument("--local_rank", default=-2, type=int)
 parser.add_argument("--config_path", default="./Config/default.yml", type=str)
-parser.add_argument("--load_model", default="", type=str)
 # 拿出参数集
 args = parser.parse_args()
-useDDP = args.useDDP
+useDDP = False if args.local_rank==-2 else True
 #######################################################################################################
 """
     DDP初始化：要放在所有DDP代码前
@@ -62,6 +60,7 @@ if useDDP:
     logger = logger(dist.get_rank())
 else:
     logger = logger(0)
+logger.info("使用DDP:{}".format(useDDP))
 #######################################################################################################
 """
 	GPU检查及环境
@@ -110,18 +109,14 @@ logger.info("打印模型")
 # 只有主进程打印模型
 if local_rank == 0:
     gan.PrintNet(logger)
-
-
-modelPath = args.load_model
-if modelPath == "":
-    start_epoch = 1
-    pass
+model_path = cfg["train"]["model_path"]
+if not model_path == "":
+    start_epoch = int(os.path.splitext(os.path.split(model_path)[-1])[0])
+    if local_rank == 0:
+        gan.load_state_dict(torch.load(model_path))
+        logger.info("从第%d轮开始训练"%start_epoch)
 else:
-    logger.info("加载已有的模型")
-    gan.load_state_dict(torch.load(modelPath))
-    start_epoch = int(os.path.splitext(os.path.split(modelPath)[1])[0])+1
-logger.info("从第%d轮开始训练"%start_epoch)
-
+    start_epoch = 0
 ######################################################################################################
 """
 	数据集
@@ -237,7 +232,7 @@ for epoch in range(start_epoch, epochs):
         # 做Loss反向传播
         Dloss.backward()
         # 更新判别器参数
-        gan.discriminator.optimizer.step()
+        gan.discriminator.scheduler.optimizer.step()
 
         ####################################################################################################
         # 训练生成器
@@ -257,11 +252,14 @@ for epoch in range(start_epoch, epochs):
         # 做反向传播
         Gloss.backward()
         # 更新生成器参数
-        gan.generator.optimizer.step()
+        gan.generator.scheduler.optimizer.step()
         # 设置进度条右边显示的信息
         if index % 10 == 0 and local_rank == 0:
             train_data_loader.set_postfix(
                 Dloss=Dloss.item(), GLoss=Gloss.float().item())
+
+    gan.discriminator.scheduler.step()
+    gan.generator.scheduler.step()
 
     # 每10轮，主进程保存一次结果图片
     if epoch % cfg["train"]["save_freq"] == 0 and local_rank == 0:
